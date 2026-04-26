@@ -1,7 +1,6 @@
 import asyncio
 import math
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -12,16 +11,7 @@ from tkinter import scrolledtext, messagebox
 os.environ["NODE_NO_WARNINGS"] = "1"
 
 # ── Konstanta ──────────────────────────────────────────────────────────────
-CDP_PORT  = 9222
-SITE_URL  = "https://stt-ronggolawe.ac.id/siakpt/home"
-
-# Lokasi Chrome yang umum di Windows
-CHROME_PATHS = [
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",  # Edge fallback
-]
+SITE_URL  = "https://stt-ronggolawe.ac.id/siakpt/login"
 
 # ── Warna GUI ──────────────────────────────────────────────────────────────
 BG      = "#0d1117"
@@ -37,27 +27,121 @@ SUBTEXT = "#8b949e"
 FMN     = ("Consolas", 10)
 FML     = ("Consolas", 9)
 
-
 # ═══════════════════════════════════════════════════════════════════════════
-#  CARI CHROME
-# ═══════════════════════════════════════════════════════════════════════════
-
-def find_chrome() -> str | None:
-    for p in CHROME_PATHS:
-        if os.path.exists(p):
-            return p
-    return None
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  BOT — nyambung ke Chrome yang sudah dibuka user
+#  BOT FULL OTOMATIS (STEALTH V4)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class SiakadBot:
-    def __init__(self, log_fn, status_fn, stop_event: threading.Event):
+    def __init__(self, log_fn, status_fn, stop_event: threading.Event, nim: str, pwd: str):
         self.log        = log_fn
         self.set_status = status_fn
         self.stop       = stop_event
+        self.nim        = nim
+        self.pwd        = pwd
+
+    # ── Tunggu Cloudflare ──────────────────────────────────────────────────
+    async def _wait_cloudflare(self, page):
+        self.log("🛡️ Mengecek verifikasi keamanan Cloudflare...")
+        for i in range(45): 
+            if self.stop.is_set(): return False
+            try:
+                title = await page.title()
+                if "Just a moment" in title or "Cloudflare" in title:
+                    
+                    # --- FITUR AUTO-CLICK CLOUDFLARE ---
+                    if i % 2 == 0: 
+                        try:
+                            for frame in page.frames:
+                                if "challenges.cloudflare.com" in frame.url or "turnstile" in frame.url:
+                                    chk = frame.locator('input[type="checkbox"], .ctp-checkbox-label, label').first
+                                    if await chk.is_visible(timeout=500):
+                                        self.log("🤖 Mencoba centang otomatis Cloudflare...")
+                                        box = await chk.bounding_box()
+                                        if box:
+                                            target_x = box["x"] + box["width"] / 2
+                                            target_y = box["y"] + box["height"] / 2
+                                            await page.mouse.move(target_x, target_y, steps=15)
+                                            await asyncio.sleep(0.2)
+                                            await page.mouse.click(target_x, target_y)
+                                            await asyncio.sleep(1)
+                        except:
+                            pass 
+                            
+                    if i == 5:
+                        self.log("⚠ PERHATIAN: Jika bot gagal centang otomatis, mohon BANTU KLIK MANUAL 1x!")
+
+                    await asyncio.sleep(2)
+                else:
+                    self.log("✅ Cloudflare berhasil dilewati!")
+                    return True
+            except Exception as e:
+                if "Execution context was destroyed" in str(e) or "Target closed" in str(e):
+                    self.log("🔄 Halaman sedang dialihkan (Cloudflare lolos!)...")
+                    await asyncio.sleep(3) 
+                    return True
+                else:
+                    await asyncio.sleep(2)
+                    
+        self.log("⚠ Waktu tunggu Cloudflare habis, mencoba lanjut...")
+        return True
+
+    # ── Login Otomatis ─────────────────────────────────────────────────────
+    async def _handle_login(self, page):
+        self.log("🔐 Mengisi form login otomatis...")
+        try:
+            inputs = await page.query_selector_all('input')
+            user_input = None
+            for inp in inputs:
+                t = await inp.get_attribute("type")
+                if t in ["text", "number"] or not t:
+                    user_input = inp
+                    break
+            
+            pwd_input = await page.query_selector('input[type="password"]')
+            
+            if user_input and pwd_input:
+                await user_input.fill(self.nim)
+                await pwd_input.fill(self.pwd)
+                await asyncio.sleep(0.5)
+                
+                login_btn = await page.query_selector('button:has-text("Login"), input[value="Login"]')
+                if login_btn:
+                    await login_btn.click()
+                    self.log("⏳ Menunggu masuk ke Dashboard...")
+                    await asyncio.sleep(3)
+                    return True
+            self.log("❌ Form login tidak ditemukan! (Mungkin sudah login)")
+            return False
+        except Exception as e:
+            self.log(f"❌ Error saat login: {e}")
+            return False
+
+    # ── Navigasi ke E-learning -> Absensi ──────────────────────────────────
+    async def _goto_absensi(self, page):
+        self.log("📂 Navigasi otomatis ke sidebar menu...")
+        try:
+            await asyncio.sleep(2)
+            
+            if "absensi" in page.url.lower():
+                self.log("✅ Sudah berada di halaman Absensi.")
+                return True
+
+            elearning = page.locator('text="E-learning"').first
+            await elearning.wait_for(state="visible", timeout=10000)
+            self.log("   ➤ Klik E-learning")
+            await elearning.click()
+            await asyncio.sleep(1.5) 
+            
+            absensi = page.locator('text="Absensi"').last
+            await absensi.wait_for(state="visible", timeout=5000)
+            self.log("   ➤ Klik Absensi")
+            await absensi.click()
+            await asyncio.sleep(3)
+            self.log("✅ Berhasil masuk ke halaman Absensi.")
+            return True
+        except Exception as e:
+            self.log(f"❌ Gagal navigasi sidebar: {e}")
+            return False
 
     # ── Tunggu tabel selesai load ──────────────────────────────────────────
     async def _wait_table(self, page, timeout=30):
@@ -68,12 +152,10 @@ class SiakadBot:
                     const el = document.querySelector('.dataTables_processing');
                     if (!el) return false;
                     const s = window.getComputedStyle(el);
-                    return s.display !== 'none' && s.visibility !== 'hidden'
-                        && s.opacity !== '0';
+                    return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
                 }
             """)
-            if not proc_visible:
-                break
+            if not proc_visible: break
             await asyncio.sleep(0.4)
         await asyncio.sleep(0.3)
 
@@ -84,43 +166,30 @@ class SiakadBot:
             canvas = await page.query_selector("canvas")
             if canvas:
                 box = await canvas.bounding_box()
-                if box and box["width"] > 100:
-                    return True
+                if box and box["width"] > 100: return True
             await asyncio.sleep(0.3)
         return False
 
-    # ── Gambar tanda tangan sesuai koordinat aslimu ────────────────────────
+    # ── Gambar Tanda Tangan Presisi (Sesuai Kordinatmu) ────────────────────
     async def _draw_signature(self, page) -> bool:
         canvas = await page.query_selector("canvas")
-        if not canvas:
-            self.log("⚠  Canvas tidak ditemukan!")
-            return False
-
+        if not canvas: return False
         box = await canvas.bounding_box()
-        if not box or box["width"] < 50:
-            self.log("⚠  Canvas tidak valid.")
-            return False
+        if not box or box["width"] < 50: return False
 
-        w, h  = box["width"], box["height"]
-        ox    = box["x"]
-        oy    = box["y"]
-
-        # Fungsi penempatan rasio relatif terhadap ukuran canvas
-        def p(xr, yr):
-            return (ox + w * xr, oy + h * yr)
+        w, h, ox, oy = box["width"], box["height"], box["x"], box["y"]
+        def p(xr, yr): return (ox + w * xr, oy + h * yr)
 
         async def stroke(pts):
             if not pts: return
             await page.mouse.move(pts[0][0], pts[0][1])
             await page.mouse.down()
             for px, py in pts[1:]:
-                # Menggambar garis dengan mulus
                 await page.mouse.move(px, py, steps=8)
                 await asyncio.sleep(0.005)
             await page.mouse.up()
             await asyncio.sleep(0.07)
 
-        # Koordinat asli dari hasil rekamanmu
         stroke1 = [
             p(0.342, 0.368), p(0.348, 0.348), p(0.356, 0.324), p(0.362, 0.300),
             p(0.368, 0.280), p(0.372, 0.260), p(0.376, 0.240), p(0.380, 0.220),
@@ -158,15 +227,13 @@ class SiakadBot:
 
         await stroke(stroke1)
         await asyncio.sleep(0.1)
-
-        self.log("✏  Tanda tangan aslimu selesai digambar.")
+        self.log("✏  Tanda tangan digambar.")
         return True
 
-    # ── Trik Pindah Semester (Bypass Kesalahan Web SIAKAD) ────────────────
+    # ── Refresh Tabel Otomatis ─────────────────────────────────────────────
     async def _refresh_via_dropdown(self, page):
-        self.log("🔄 Merefresh tabel (Trik Pindah Semester Gasal -> Genap)...")
+        self.log("🔄 Merefresh tabel...")
         try:
-            # Script JS ini sangat sakti untuk membypass klik UI Select2 yang sering meleset
             js_script = """
                 (targetText) => {
                     let success = false;
@@ -186,141 +253,18 @@ class SiakadBot:
                 }
             """
             
-            # 1. Pindah ke Semester Gasal
-            ok = await page.evaluate(js_script, 'Semester Gasal')
-            if not ok:
-                await page.locator('.select2-selection, select, span, div').filter(has_text="Semester Genap").last.click()
-                await asyncio.sleep(0.5)
-                await page.locator('li, option').filter(has_text="Semester Gasal").last.click()
-
+            await page.evaluate(js_script, 'Semester Gasal')
             await asyncio.sleep(1.5)
             await self._wait_table(page, timeout=10)
 
-            # 2. Kembalikan lagi ke Semester Genap
-            ok = await page.evaluate(js_script, 'Semester Genap')
-            if not ok:
-                await page.locator('.select2-selection, select, span, div').filter(has_text="Semester Gasal").last.click()
-                await asyncio.sleep(0.5)
-                await page.locator('li, option').filter(has_text="Semester Genap").last.click()
-
+            await page.evaluate(js_script, 'Semester Genap')
             await asyncio.sleep(1.5)
             await self._wait_table(page, timeout=10)
-            self.log("✅ Refresh tabel berhasil.")
-
         except Exception as e:
-            self.log(f"⚠ Trik refresh gagal, mencoba reload halaman... {str(e)[:30]}")
-            await page.reload()
-            await self._wait_table(page, timeout=10)
+            self.log("⚠ Gagal refresh dropdown, abaikan.")
 
-    # ── Ambil semua tombol merah dari tabel ───────────────────────────────
-    async def _get_red_buttons(self, page) -> list:
-        return await page.evaluate("""
-            () => {
-                const RED_COLORS = new Set([
-                    'rgb(220, 53, 69)', 'rgb(217, 83, 79)', 'rgb(220, 38, 38)',
-                    'rgb(239, 68, 68)', 'rgb(248, 113, 113)', 'rgb(185, 28, 28)',
-                    'rgb(255, 0, 0)', 'rgb(200, 35, 51)'
-                ]);
-
-                const items = [];
-                const tds = document.querySelectorAll(
-                    'table tbody td, .dataTables_wrapper td'
-                );
-
-                for (const td of tds) {
-                    const els = td.querySelectorAll('a, button, span, div');
-                    for (const el of els) {
-                        const st  = window.getComputedStyle(el);
-                        const bg  = st.backgroundColor;
-                        const cls = (el.className || '').toString();
-                        const isRed = RED_COLORS.has(bg) ||
-                                      cls.includes('btn-danger') ||
-                                      cls.includes('danger');
-                        if (!isRed) continue;
-
-                        const text = el.innerText.trim();
-                        const rect = el.getBoundingClientRect();
-                        if (!text || rect.width === 0) continue;
-
-                        items.push({
-                            text,
-                            bg,
-                            x: rect.left + rect.width  / 2 + window.scrollX,
-                            y: rect.top  + rect.height / 2 + window.scrollY,
-                        });
-                    }
-                }
-                return items;
-            }
-        """)
-
-    # ── Proses satu pertemuan ─────────────────────────────────────────────
-    async def _sign_one(self, page, btn: dict, idx: int) -> bool:
-        label = f"Pertemuan {btn['text']}"
-        self.log(f"🔴  [{idx}] Klik {label}...")
-
-        await page.evaluate(f"window.scrollTo(0, {max(0, btn['y'] - 300)})")
-        await asyncio.sleep(0.3)
-
-        pos = await page.evaluate(f"""
-            () => {{
-                const els = document.querySelectorAll('table tbody td a, table tbody td button, table tbody td span');
-                for (const el of els) {{
-                    const st = window.getComputedStyle(el);
-                    const RED_COLORS = new Set(['rgb(220, 53, 69)','rgb(217, 83, 79)','rgb(220, 38, 38)','rgb(239, 68, 68)','rgb(248, 113, 113)','rgb(185, 28, 28)','rgb(255, 0, 0)','rgb(200, 35, 51)']);
-                    const cls = (el.className||'').toString();
-                    if ((RED_COLORS.has(st.backgroundColor)||cls.includes('btn-danger')) && el.innerText.trim() === '{btn['text']}') {{
-                        el.scrollIntoView({{block:'center'}});
-                        const r = el.getBoundingClientRect();
-                        return {{ x: r.left + r.width/2, y: r.top + r.height/2 }};
-                    }}
-                }}
-                return null;
-            }}
-        """)
-
-        if pos:
-            await page.mouse.click(pos["x"], pos["y"])
-        else:
-            self.log(f"⚠  Tombol {label} tidak ditemukan lagi.")
-            return False
-
-        await asyncio.sleep(0.8)
-
-        ok = await self._wait_canvas(page)
-        if not ok:
-            self.log(f"⚠  Canvas tidak muncul untuk {label}, skip.")
-            return False
-
-        await page.evaluate("window.scrollTo(0, 0)")
-        await asyncio.sleep(0.3)
-
-        drawn = await self._draw_signature(page)
-        if not drawn: return False
-
-        await asyncio.sleep(0.5)
-
-        simpan = await page.query_selector(
-            'button:text-matches("simpan", "i"), '
-            'input[value="Simpan"], '
-            'button[type="submit"]'
-        )
-        if not simpan:
-            self.log(f"⚠  Tombol Simpan tidak ada!")
-            return False
-
-        self.log(f"💾  Simpan {label}...")
-        await simpan.click()
-        await asyncio.sleep(1.5)
-
-        # TRIK REFRESH SEMESTER
-        await self._refresh_via_dropdown(page)
-
-        self.log(f"✅  {label} berhasil!")
-        return True
-
-    # ── Loop utama ────────────────────────────────────────────────────────
-    async def _run_loop(self, page) -> tuple[int, int]:
+    # ── Loop Tanda Tangan ──────────────────────────────────────────────────
+    async def _run_loop(self, page):
         signed = skipped = rnd = 0
 
         while not self.stop.is_set():
@@ -328,164 +272,197 @@ class SiakadBot:
             self.log(f"\n🔍  Scan putaran {rnd}...")
             await self._wait_table(page)
 
-            buttons = await self._get_red_buttons(page)
+            buttons = await page.evaluate("""
+                () => {
+                    const items = [];
+                    const tds = document.querySelectorAll('table tbody td');
+                    for (const td of tds) {
+                        const els = td.querySelectorAll('a, button, span, div');
+                        for (const el of els) {
+                            const bg = window.getComputedStyle(el).backgroundColor;
+                            const cls = (el.className || '');
+                            if (bg.includes('220, 53, 69') || bg.includes('255, 0, 0') || cls.includes('danger')) {
+                                const rect = el.getBoundingClientRect();
+                                if (el.innerText.trim() && rect.width > 0) {
+                                    items.push({text: el.innerText.trim(), x: rect.left + rect.width/2 + window.scrollX, y: rect.top + rect.height/2 + window.scrollY});
+                                }
+                            }
+                        }
+                    }
+                    return items;
+                }
+            """)
+
             if not buttons:
                 self.log("ℹ  Tidak ada tombol merah tersisa.")
                 break
 
-            self.log(f"🔴  Ditemukan {len(buttons)} tombol merah:")
-            for i, b in enumerate(buttons, 1):
-                self.log(f"    [{i}] Pertemuan {b['text']}")
-
+            self.log(f"🔴  Ditemukan {len(buttons)} absensi tertunda.")
             for i, btn in enumerate(buttons, 1):
-                if self.stop.is_set():
-                    break
-                ok = await self._sign_one(page, btn, i)
-                (signed if ok else skipped).__class__  # dummy
-                if ok:
-                    signed += 1
-                else:
-                    skipped += 1
+                if self.stop.is_set(): break
+                label = f"Pertemuan {btn['text']}"
+                self.log(f"▶  Klik {label}...")
                 
+                await page.evaluate(f"window.scrollTo(0, {max(0, btn['y'] - 300)})")
+                await asyncio.sleep(0.3)
+                await page.mouse.click(btn["x"], btn["y"])
+                await asyncio.sleep(0.8)
+
+                if not await self._wait_canvas(page):
+                    skipped += 1
+                    continue
+
+                await page.evaluate("window.scrollTo(0, 0)")
+                if await self._draw_signature(page):
+                    simpan = await page.query_selector('button:has-text("Simpan"), input[value="Simpan"]')
+                    if simpan:
+                        self.log(f"💾  Menyimpan {label}...")
+                        await simpan.click()
+                        await asyncio.sleep(1.5)
+                        await self._refresh_via_dropdown(page)
+                        self.log(f"✅  {label} Berhasil!")
+                        signed += 1
+                    else: skipped += 1
+                else: skipped += 1
                 await asyncio.sleep(1)
 
         return signed, skipped
 
-    # ── Entry point ───────────────────────────────────────────────────────
+    # ── Main Eksekusi ──────────────────────────────────────────────────────
     async def run(self):
         from playwright.async_api import async_playwright
-
         self.set_status("running")
-        self.log("🔗  Mencoba nyambung ke Chrome...")
 
         async with async_playwright() as p:
+            self.log("🌐 Membuka Browser Chrome dengan profil persisten...")
+            
+            user_data_dir = os.path.join(os.getcwd(), "chrome_bot_profile")
+            
             try:
-                browser = await p.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{CDP_PORT}"
+                # PERBAIKAN FATAL: Stealth Mode Bypass Cloudflare
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=user_data_dir,
+                    channel="chrome", 
+                    headless=False,
+                    no_viewport=True, 
+                    ignore_default_args=["--enable-automation", "--no-sandbox"], 
+                    args=[
+                        "--disable-blink-features=AutomationControlled", 
+                        "--start-maximized"
+                    ]
                 )
-            except Exception as e:
-                self.log(f"❌  Gagal nyambung: {e}")
-                self.set_status("error")
-                return
+                
+                page = context.pages[0] if len(context.pages) > 0 else await context.new_page()
+                
+                self.log(f"🔗 Menuju ke {SITE_URL}")
+                await page.goto(SITE_URL, wait_until="domcontentloaded", timeout=60000)
+                
+                # 1. Tunggu Cloudflare
+                await self._wait_cloudflare(page)
+                
+                # Pengecekan form login
+                try:
+                    await page.wait_for_selector('input[type="password"]', timeout=15000)
+                    
+                    # 2. Login
+                    login_ok = await self._handle_login(page)
+                    if not login_ok:
+                        self.set_status("error")
+                        return
+                except:
+                    self.log("✅ Tidak mendeteksi form login, menganggap sudah masuk...")
 
-            self.log("✅  Berhasil nyambung ke Chrome!")
+                # 3. Navigasi Sidebar E-Learning -> Absensi
+                nav_ok = await self._goto_absensi(page)
+                if not nav_ok:
+                    self.set_status("error")
+                    return
 
-            contexts = browser.contexts
-            if not contexts: return
-            pages = contexts[0].pages
-            if not pages: return
-
-            page = None
-            for pg in pages:
-                if "siakpt" in pg.url or "ronggolawe" in pg.url:
-                    page = pg
-                    break
-            if not page: page = pages[0]
-
-            self.log(f"📄  Tab aktif: {page.url}")
-
-            try:
+                # 4. Tanda Tangan
                 signed, skipped = await self._run_loop(page)
+
                 self.log("\n" + "═" * 50)
-                self.log(f"  🎉  SELESAI!")
-                self.log(f"  ✅  Berhasil : {signed} pertemuan")
-                self.log(f"  ⏭  Dilewati : {skipped} pertemuan")
+                self.log(f"  🎉  SELESAI FULL OTOMATIS!")
+                self.log(f"  ✅  Berhasil ditandatangani : {signed}")
+                self.log(f"  ⏭  Gagal / dilewati        : {skipped}")
                 self.log("═" * 50)
                 self.set_status("done")
 
             except Exception as e:
-                self.log(f"\n💥  ERROR: {e}")
+                self.log(f"\n💥 ERROR: {e}")
                 self.set_status("error")
-
+            finally:
+                if 'context' in locals():
+                    await asyncio.sleep(2)
+                    await context.close()
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  GUI
+#  GUI (VERSI V4 UPDATED)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("SIAKAD KPT — Auto Absensi v3")
+        self.title("SIAKAD KPT — Full Auto Absensi v4 (Stealth Mode)")
         self.configure(bg=BG)
         self.resizable(False, False)
-
-        self._stop_event   = threading.Event()
-        self._chrome_proc  = None
-        self._thread       = None
-
+        self._stop_event = threading.Event()
+        self._thread = None
         self._build_ui()
         self._center()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
         hdr = tk.Frame(self, bg=SURFACE, padx=20, pady=14)
         hdr.pack(fill="x")
         tk.Label(hdr, text="⚡", bg=SURFACE, fg=WARNING, font=("Consolas", 20)).pack(side="left")
         tk.Label(hdr, text=" SIAKAD KPT", bg=SURFACE, fg=ACCENT, font=("Consolas", 18, "bold")).pack(side="left")
-        tk.Label(hdr, text="  Auto Absensi v3", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 12)).pack(side="left")
-        self._dot  = tk.Label(hdr, text="●", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 15))
+        tk.Label(hdr, text="  Full Auto v4", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 12)).pack(side="left")
+        self._dot = tk.Label(hdr, text="●", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 15))
         self._dot.pack(side="right")
         self._slbl = tk.Label(hdr, text="Siap", bg=SURFACE, fg=SUBTEXT, font=FMN)
         self._slbl.pack(side="right", padx=(0, 6))
-        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        steps = tk.Frame(self, bg=CARD, padx=20, pady=14)
-        steps.pack(fill="x", padx=14, pady=12)
-        tk.Label(steps, text="CARA PAKAI", bg=CARD, fg=ACCENT, font=("Consolas", 9, "bold")).pack(anchor="w")
+        # --- FRAME LOGIN ---
+        login_frame = tk.Frame(self, bg=CARD, padx=20, pady=15)
+        login_frame.pack(fill="x", padx=14, pady=12)
+        
+        tk.Label(login_frame, text="AKUN SIAKAD", bg=CARD, fg=ACCENT, font=("Consolas", 9, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
-        panduan = [
-            ("1", "Klik  ▶ Buka Browser  — Chrome terbuka"),
-            ("2", "Login SIAKAD seperti biasa (manual)"),
-            ("3", "Navigasi ke halaman  Absensi"),
-            ("4", "Klik  ▶ Mulai Bot  — bot otomatis ganti semester & ttd"),
-        ]
-        for num, txt in panduan:
-            row = tk.Frame(steps, bg=CARD)
-            row.pack(fill="x", pady=2)
-            tk.Label(row, text=f" {num} ", bg=ACCENT, fg=BG, font=("Consolas", 9, "bold"), padx=4, pady=1).pack(side="left")
-            tk.Label(row, text=f"  {txt}", bg=CARD, fg=TEXT, font=FMN).pack(side="left")
+        tk.Label(login_frame, text="NIM      :", bg=CARD, fg=TEXT, font=FMN).grid(row=1, column=0, sticky="w")
+        self.nim_entry = tk.Entry(login_frame, font=FMN, bg=SURFACE, fg=TEXT, insertbackground=TEXT, width=30)
+        self.nim_entry.grid(row=1, column=1, padx=10, pady=5)
+        self.nim_entry.insert(0, "24550011") 
 
-        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+        tk.Label(login_frame, text="Password :", bg=CARD, fg=TEXT, font=FMN).grid(row=2, column=0, sticky="w")
+        self.pwd_entry = tk.Entry(login_frame, font=FMN, bg=SURFACE, fg=TEXT, insertbackground=TEXT, show="*", width=30)
+        self.pwd_entry.grid(row=2, column=1, padx=10, pady=5)
 
-        btns = tk.Frame(self, bg=BG, padx=14, pady=10)
+        # --- TOMBOL AKSI ---
+        btns = tk.Frame(self, bg=BG, padx=14, pady=5)
         btns.pack(fill="x")
 
-        self._btn_open = tk.Button(
-            btns, text="🌐  Buka Browser", command=self._open_browser,
-            bg=CARD, fg=ACCENT, activebackground=BORDER, relief="flat",
-            font=("Consolas", 11, "bold"), padx=18, pady=9, cursor="hand2", bd=1, highlightbackground=BORDER,
-        )
-        self._btn_open.pack(side="left")
-
         self._btn_run = tk.Button(
-            btns, text="▶  Mulai Bot", command=self._start_bot,
+            btns, text="▶  Mulai Otomatis", command=self._start_bot,
             bg=SUCCESS, fg=BG, activebackground="#2ea043", relief="flat",
-            font=("Consolas", 11, "bold"), padx=18, pady=9, cursor="hand2",
+            font=("Consolas", 11, "bold"), padx=18, pady=9, cursor="hand2"
         )
-        self._btn_run.pack(side="left", padx=10)
+        self._btn_run.pack(side="left")
 
         self._btn_stop = tk.Button(
             btns, text="■  Stop", command=self._do_stop,
             bg=DANGER, fg=BG, activebackground="#da3633", relief="flat",
-            font=("Consolas", 11, "bold"), padx=18, pady=9, cursor="hand2", state="disabled",
+            font=("Consolas", 11, "bold"), padx=18, pady=9, cursor="hand2", state="disabled"
         )
-        self._btn_stop.pack(side="left")
+        self._btn_stop.pack(side="left", padx=10)
 
-        tk.Button(
-            btns, text="🗑", command=self._clear,
-            bg=SURFACE, fg=SUBTEXT, relief="flat", font=("Consolas", 12), padx=10, pady=9, cursor="hand2",
-        ).pack(side="right")
+        tk.Button(btns, text="🗑", command=self._clear, bg=SURFACE, fg=SUBTEXT, relief="flat", font=("Consolas", 12), padx=10, pady=9, cursor="hand2").pack(side="right")
 
-        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
-
+        # --- LOG ---
         lf = tk.Frame(self, bg=BG, padx=0, pady=0)
         lf.pack(fill="both", expand=True)
-        tk.Label(lf, text=" ● LOG ", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 8, "bold"), anchor="w").pack(fill="x")
+        tk.Label(lf, text=" ● LOG PROSES ", bg=SURFACE, fg=SUBTEXT, font=("Consolas", 8, "bold"), anchor="w").pack(fill="x")
 
-        self._log = scrolledtext.ScrolledText(
-            lf, width=74, height=20, bg=SURFACE, fg=TEXT, insertbackground=ACCENT,
-            relief="flat", font=FML, state="disabled", padx=12, pady=8,
-        )
+        self._log = scrolledtext.ScrolledText(lf, width=74, height=15, bg=SURFACE, fg=TEXT, insertbackground=ACCENT, relief="flat", font=FML, state="disabled", padx=12, pady=8)
         self._log.pack(fill="both", expand=True)
 
         for tag, col in [("ok", SUCCESS), ("err", DANGER), ("warn", WARNING), ("info", ACCENT), ("dim", SUBTEXT)]:
@@ -493,35 +470,26 @@ class App(tk.Tk):
 
     def _center(self):
         self.update_idletasks()
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        w  = self.winfo_width()
-        h  = self.winfo_height()
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w, h = self.winfo_width(), self.winfo_height()
         self.geometry(f"+{(sw-w)//2}+{(sh-h)//2}")
 
     def _write_log(self, msg: str):
         m = msg.lower()
-        if any(k in m for k in ["✅","berhasil","selesai","🎉"]): tag = "ok"
-        elif any(k in m for k in ["❌","💥","error","gagal"]): tag = "err"
-        elif any(k in m for k in ["⚠","skip","tidak ditemukan","timeout"]): tag = "warn"
-        elif any(k in m for k in ["🔍","🌐","🔗","💾","🔴","ℹ","✏","📄","📋","🟢","🔄","⏳"]): tag = "info"
-        elif "═" in msg: tag = "dim"
-        else: tag = None
+        tag = "ok" if any(k in m for k in ["✅","berhasil","selesai","🎉"]) else \
+              "err" if any(k in m for k in ["❌","💥","error","gagal"]) else \
+              "warn" if any(k in m for k in ["⚠","habis"]) else \
+              "info" if any(k in m for k in ["🔍","🌐","🔗","💾","🔴","ℹ","✏","📄","📋","🟢","🔄","⏳","🔐","📂","▶","🤖"]) else \
+              "dim" if "═" in msg else None
 
-        ts   = time.strftime("%H:%M:%S")
-        line = f"[{ts}] {msg}\n"
+        ts = time.strftime("%H:%M:%S")
         self._log.config(state="normal")
-        self._log.insert("end", line, tag or "")
+        self._log.insert("end", f"[{ts}] {msg}\n", tag or "")
         self._log.see("end")
         self._log.config(state="disabled")
 
     def _set_status(self, s: str):
-        MAP = {
-            "running": (WARNING, "Berjalan..."),
-            "done":    (SUCCESS, "Selesai ✓"),
-            "error":   (DANGER,  "Error ✗"),
-            "idle":    (SUBTEXT, "Siap"),
-        }
+        MAP = {"running": (WARNING, "Berjalan..."), "done": (SUCCESS, "Selesai ✓"), "error": (DANGER, "Error ✗"), "idle": (SUBTEXT, "Siap")}
         c, t = MAP.get(s, (SUBTEXT, s))
         def _up():
             self._dot.config(fg=c)
@@ -536,44 +504,29 @@ class App(tk.Tk):
         self._log.delete("1.0", "end")
         self._log.config(state="disabled")
 
-    def _open_browser(self):
-        chrome = find_chrome()
-        if not chrome:
-            messagebox.showerror("Chrome Tidak Ditemukan", "Download Chrome dari: https://google.com/chrome")
+    def _start_bot(self):
+        nim = self.nim_entry.get().strip()
+        pwd = self.pwd_entry.get().strip()
+
+        if not nim or not pwd:
+            messagebox.showwarning("Peringatan", "Mohon isi NIM dan Password terlebih dahulu!")
             return
 
-        self._write_log(f"🌐  Membuka Chrome (Port: {CDP_PORT})")
-        try:
-            if self._chrome_proc and self._chrome_proc.poll() is None:
-                self._chrome_proc.terminate()
-                time.sleep(1)
-
-            profile_dir = os.path.join(os.getcwd(), "chrome_bot_profile")
-            self._chrome_proc = subprocess.Popen([
-                chrome,
-                f"--remote-debugging-port={CDP_PORT}",
-                f"--user-data-dir={profile_dir}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                SITE_URL,
-            ])
-            self._write_log("✅  Browser terbuka! Silakan login SIAKAD.")
-        except Exception as e:
-            self._write_log(f"❌  Gagal buka browser: {e}")
-
-    def _start_bot(self):
         self._stop_event.clear()
         self._btn_run.config(state="disabled")
         self._btn_stop.config(state="normal")
         self._set_status("running")
+        
         self._write_log("\n" + "═" * 50)
-        self._write_log(f"  ⚡ Bot dimulai — {time.strftime('%H:%M:%S')}")
+        self._write_log(f"  ⚡ Memulai Otomasi — {time.strftime('%H:%M:%S')}")
         self._write_log("═" * 50)
 
         bot = SiakadBot(
-            log_fn     = lambda m: self.after(0, self._write_log, m),
-            status_fn  = self._set_status,
-            stop_event = self._stop_event,
+            log_fn=lambda m: self.after(0, self._write_log, m),
+            status_fn=self._set_status,
+            stop_event=self._stop_event,
+            nim=nim,
+            pwd=pwd
         )
 
         def _worker():
@@ -586,15 +539,9 @@ class App(tk.Tk):
 
     def _do_stop(self):
         self._stop_event.set()
-        self._write_log("🛑  Dihentikan.")
+        self._write_log("🛑 Dihentikan oleh pengguna.")
         self._btn_stop.config(state="disabled")
         self._set_status("idle")
-
-    def _on_close(self):
-        if self._chrome_proc and self._chrome_proc.poll() is None:
-            if messagebox.askyesno("Tutup", "Tutup Chrome juga?"):
-                self._chrome_proc.terminate()
-        self.destroy()
 
 if __name__ == "__main__":
     app = App()
