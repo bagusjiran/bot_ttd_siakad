@@ -1,64 +1,52 @@
-# ⚡ SIAKAD KPT — Auto Absensi Bot V3 (Full Auto Stealth)
+# ⚡ SIAKAD KPT — Auto Absensi Bot V4 (Full Auto Stealth)
 
-Bot otomasi absensi cerdas yang dirancang khusus untuk mahasiswa **STT Ronggolawe Cepu**. Versi **V4** ini merupakan evolusi tertinggi yang menggabungkan fitur *Stealth Mode* untuk melewati proteksi Cloudflare dan sistem *Persistent Profile* agar bot mengenali perangkat Anda seperti browser asli.
-
----
-
-## ✨ Fitur Unggulan V4
-* **🛡️ Anti-Cloudflare (Stealth Mode):** Menggunakan teknik `ignore_default_args` untuk menghapus jejak otomatisasi ("Chrome is being controlled...") yang sering memicu blokir Cloudflare.
-* **👤 Persistent Profile (Bukan Incognito):** Bot menyimpan session dan cookies di folder `chrome_bot_profile`. Jika Anda sudah login sekali, bot akan mengingatnya (Sama seperti browser utama).
-* **🔐 Full Auto Login:** Masukkan NIM dan Password langsung di GUI, bot yang akan melakukan proses pengisian.
-* **📂 Smart Navigation:** Otomatis membuka sidebar **E-learning** lalu menuju menu **Absensi** tanpa intervensi pengguna.
-* **✏️ High-Precision Signature:** Menggunakan koordinat asli (inisial "JR") yang sudah diuji 95% identik dengan tanda tangan manual.
-* **🔄 Anti-Bug Refresh:** Sistem otomatis memancing refresh tabel dengan mengubah filter semester (Gasal -> Genap) untuk memastikan tombol merah muncul setelah tanda tangan disimpan.
+Bot otomasi absensi cerdas yang dirancang khusus untuk mahasiswa **STT Ronggolawe Cepu**. Versi ini dilengkapi dengan *Stealth Mode* untuk menembus Cloudflare, sistem navigasi otomatis, dan fitur untuk menggunakan tanda tangan asli kamu sendiri.
 
 ---
 
-## 🛠️ Persyaratan Sistem
-1.  **Python 3.10+**
-2.  **Google Chrome** versi terbaru terinstal di Windows.
-3.  **Library Python:**
-    * `playwright` (Engine browser)
-    * `tkinter` (Bawaan Python untuk GUI)
+## 📁 Struktur File
+Berikut adalah kegunaan dari masing-masing *file* dalam proyek ini:
+* [cite_start]`INSTALL.bat`: Script otomatis untuk menginstal Python library yang dibutuhkan[cite: 1, 2].
+* `absen.py`: Aplikasi kanvas untuk menggambar dan merekam koordinat tanda tangan aslimu.
+* `hasil.py`: Aplikasi untuk menguji coba (preview) animasi tanda tangan sebelum dimasukkan ke bot.
+* `absensi_bot.py`: Script bot utama yang menjalankan proses otomasi secara penuh.
+* [cite_start]`JALANKAN.bat`: Script otomatis untuk menjalankan bot utama dengan satu kali klik[cite: 4].
 
 ---
 
-## 🚀 Instalasi
-
-1.  **Clone atau download repo ini.**
-2.  **Install dependencies:**
-    Buka CMD di folder script, lalu jalankan:
-    ```bash
-    pip install playwright
-    playwright install chrome
-    ```
-3.  **Jalankan aplikasi:**
-    ```bash
-    python absensi_bot.py
-    ```
+## 🚀 Langkah 1: Instalasi
+Jika ini adalah pertama kalinya kamu menggunakan bot ini di komputermu, ikuti langkah berikut:
+1. [cite_start]Pastikan **Python** sudah terinstal di komputermu (centang "Add to PATH" saat instalasi Python)[cite: 2].
+2. Klik 2x pada file `INSTALL.bat`. [cite_start]Script ini akan otomatis menginstal library `playwright` dan mengunduh *browser* Chromium[cite: 2].
+3. [cite_start]Tunggu hingga muncul tulisan "Semua siap!" di terminal[cite: 3].
 
 ---
 
-## 📖 Alur Penggunaan
-
-Bot bekerja dengan alur **"Set-and-Forget"** (Setel dan Tinggalkan):
-
-1.  **Input Kredensial:** Masukkan NIM dan Password SIAKAD Anda pada kolom yang tersedia di GUI.
-2.  **Klik "Mulai Otomatis":** Bot akan membuka jendela Chrome asli.
-3.  **Verifikasi Cloudflare:** * Jika muncul halaman "Verify you are human", bot akan mencoba mengklik otomatis. 
-    * Jika gagal (karena proteksi tinggi), Anda cukup membantu mengklik kotak verifikasi tersebut **satu kali**.
-4.  **Login & Navigasi:** Setelah lolos Cloudflare, bot akan mengisi form login, masuk ke Dashboard, lalu secara otomatis mencari menu **E-learning > Absensi** di sidebar.
-5.  **Proses Tanda Tangan:**
-    * Bot memindai semua tombol merah (pertemuan yang belum absen).
-    * Mengklik tombol, menggambar tanda tangan presisi, dan menyimpan.
-    * Melakukan trik "Refresh Semester" untuk memvalidasi status absensi terbaru.
-6.  **Selesai:** Bot akan memberikan laporan jumlah pertemuan yang berhasil ditandatangani di bagian Log.
+## ✍️ Langkah 2: Membuat & Memasang Tanda Tangan
+Kamu harus merekam tanda tanganmu sendiri agar bot bisa menirunya.
+1. Jalankan *file* `absen.py` menggunakan Python.
+2. Gambar tanda tanganmu di kotak putih yang disediakan.
+3. Klik tombol **"⚙️ Buat Kode"** lalu *copy* seluruh teks koordinat yang muncul (dimulai dari tulisan `stroke1 = [ ... ]`).
+4. **(Opsional)** Jika kamu ragu dengan hasilnya, buka file `hasil.py`, timpa kordinat `stroke1` di dalamnya dengan kodemu, lalu jalankan untuk melihat *preview* animasinya.
+5. Buka *file* `absensi_bot.py` menggunakan Notepad atau *code editor*.
+6. Gunakan fitur pencarian (Ctrl+F) dan cari tulisan `stroke1 =`.
+7. **Paste (timpa)** koordinat bawaan dengan koordinat tanda tangan aslimu yang sudah di-*copy* tadi. Simpan *file* (Ctrl+S).
 
 ---
 
-## ⚠️ Catatan Keamanan
-* **Data Profile:** Folder `chrome_bot_profile` berisi session login Anda. Jangan bagikan folder ini kepada orang lain.
-* **Mode Manual:** Jika website SIAKAD sedang maintenance atau lambat, Anda bisa menekan tombol **Stop** untuk mengambil alih kontrol browser secara manual.
+## ▶️ Langkah 3: Menjalankan Bot
+1. [cite_start]Klik 2x pada *file* `JALANKAN.bat`[cite: 4].
+2. Masukkan **NIM** dan **Password** SIAKAD kamu pada aplikasi bot.
+3. Klik tombol **"▶ Mulai Otomatis"**.
+4. **Perhatikan Cloudflare:** Bot akan membuka Chrome asli dan mencoba melewati Cloudflare. Jika bot gagal melakukan centang otomatis "Verify you are human", silakan bantu klik manual 1x pada layar.
+5. **Set-and-Forget:** Setelah berhasil login, bot akan otomatis masuk ke menu **E-learning > Absensi**, mencari semua absensi yang berwarna merah, menandatanganinya dengan tanda tangan aslimu, dan me-*refresh* tabel otomatis.
+
+---
+
+## ⚠️ Catatan Keamanan & Penggunaan
+* **Persistent Profile:** Bot ini menggunakan profil Chrome asli. Setelah login pertama berhasil, *cookies* akan tersimpan. Saat menjalankan bot di lain waktu, Cloudflare biasanya tidak akan menanyakan verifikasi ulang.
+* **Keamanan Data:** Informasi NIM dan Password hanya digunakan secara lokal saat bot berjalan dan tidak dikirim ke pihak ketiga mana pun.
+* **Bot Terdeteksi?:** Bot ini sudah menggunakan argumen `--disable-blink-features=AutomationControlled` dan mengabaikan argumen `--enable-automation` bawaan Playwright agar Cloudflare tidak mengenali aktivitas ini sebagai robot.
 
 ---
 
