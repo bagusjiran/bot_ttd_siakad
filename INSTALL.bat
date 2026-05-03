@@ -1,9 +1,9 @@
 @echo off
-title SIAKAD Auto Absensi v2 - Setup
+title SIAKAD Auto Absensi v4 - Setup
 color 0A
 echo.
 echo  =============================================
-echo    SIAKAD KPT Auto Absensi Bot v2 - Setup
+echo    SIAKAD KPT Auto Absensi Bot v4 - Setup
 echo  =============================================
 echo.
 
@@ -19,9 +19,9 @@ echo  [1/3] Install playwright...
 pip install playwright -q
 if %errorlevel% neq 0 ( echo  [ERROR] Gagal! & pause & exit /b 1 )
 
-echo  [2/3] Download browser Chromium...
-playwright install chromium
-if %errorlevel% neq 0 ( echo  [ERROR] Gagal download! & pause & exit /b 1 )
+echo  [2/3] Install dependencies...
+pip install -r requirements.txt
+if %errorlevel% neq 0 ( echo  [ERROR] Gagal! & pause & exit /b 1 )
 
 echo  [3/3] Semua siap!
 echo.
